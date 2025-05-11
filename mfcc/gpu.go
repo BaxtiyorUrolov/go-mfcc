@@ -1,71 +1,16 @@
 package mfcc
 
-// CGO direktivalari: CUDA kutubxonalarini ulash
-// Standart CUDA yo‘li: /usr/local/cuda/lib64, agar tizimingizda boshqa bo‘lsa, o‘zgartiring
 /*
-#cgo LDFLAGS: -lcudart -lcufft -L/usr/local/cuda/lib64
+#cgo CFLAGS: -I/usr/local/cuda-12.8/targets/x86_64-linux/include -Wall
+#cgo LDFLAGS: -L/usr/local/cuda-12.8/targets/x86_64-linux/lib -lcudart -lcufft /home/baxtiyor/go-mfcc/kernels.o
 #include <cuda_runtime.h>
 #include <cufft.h>
 
-// Power spectrumini hisoblash uchun CUDA kernel
-__global__ void powerSpectrumKernel(cufftComplex* fftOut, float* powerSpec, int n) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < n/2 + 1) {
-        float re = fftOut[idx].x;
-        float im = fftOut[idx].y;
-        powerSpec[idx] = re * re + im * im;
-    }
-}
-
-// Mel filtrlarini qo‘llash uchun CUDA kernel
-__global__ void applyMelFiltersKernel(float* powerSpec, float* filterBanks, float* melEnergies, int numFilters, int frameSize) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < numFilters) {
-        float energy = 0.0f;
-        for (int j = 0; j < frameSize/2 + 1; j++) {
-            energy += powerSpec[j] * filterBanks[idx * (frameSize/2 + 1) + j];
-        }
-        melEnergies[idx] = energy;
-    }
-}
-
-// Log operatsiyasi uchun CUDA kernel
-__global__ void logKernel(float* input, float* output, int n) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < n) {
-        output[idx] = logf(input[idx] + 1e-6f);
-    }
-}
-
-// DCT uchun CUDA kernel
-__global__ void dctKernel(float* input, float* output, int n, int numCoeffs, float sqrt2OverN) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < numCoeffs) {
-        float sum = 0.0f;
-        for (int m = 0; m < n; m++) {
-            float angle = 3.14159265359 * idx * (m + 0.5) / n;
-            sum += input[m] * cosf(angle);
-        }
-        output[idx] = sum * sqrt2OverN;
-    }
-}
-
-// CUDA kernelni Go’dan chaqirish uchun yordamchi funksiyalar
-void launchPowerSpectrumKernel(cufftComplex* fftOut, float* powerSpec, int n, int gridSize, int blockSize, cudaStream_t stream) {
-    powerSpectrumKernel<<<gridSize, blockSize, 0, stream>>>(fftOut, powerSpec, n);
-}
-
-void launchApplyMelFiltersKernel(float* powerSpec, float* filterBanks, float* melEnergies, int numFilters, int frameSize, int gridSize, int blockSize, cudaStream_t stream) {
-    applyMelFiltersKernel<<<gridSize, blockSize, 0, stream>>>(powerSpec, filterBanks, melEnergies, numFilters, frameSize);
-}
-
-void launchLogKernel(float* input, float* output, int n, int gridSize, int blockSize, cudaStream_t stream) {
-    logKernel<<<gridSize, blockSize, 0, stream>>>(input, output, n);
-}
-
-void launchDctKernel(float* input, float* output, int n, int numCoeffs, float sqrt2OverN, int gridSize, int blockSize, cudaStream_t stream) {
-    dctKernel<<<gridSize, blockSize, 0, stream>>>(input, output, n, numCoeffs, sqrt2OverN);
-}
+// Yordamchi funksiyalar deklaratsiyasi
+void launchPowerSpectrumKernel(cufftComplex* fftOut, float* powerSpec, int n, int gridSize, int blockSize, cudaStream_t stream);
+void launchApplyMelFiltersKernel(float* powerSpec, float* filterBanks, float* melEnergies, int numFilters, int frameSize, int gridSize, int blockSize, cudaStream_t stream);
+void launchLogKernel(float* input, float* output, int n, int gridSize, int blockSize, cudaStream_t stream);
+void launchDctKernel(float* input, float* output, int n, int numCoeffs, float sqrt2OverN, int gridSize, int blockSize, cudaStream_t stream);
 */
 import "C"
 import (
@@ -105,7 +50,7 @@ func NewGPUContext(frameLength, numFilters, numCoefficients int) (*GPUContext, e
 
 	// cuFFT rejasini yaratish
 	var plan C.cufftHandle
-	if res := C.cufftPlan1d(&plan, C.int(frameLength), C.CUFFT_R2C, 1); res != C.cufftSuccess {
+	if res := C.cufftPlan1d(&plan, C.int(frameLength), C.CUFFT_R2C, 1); res != C.CUFFT_SUCCESS {
 		return nil, fmt.Errorf("cuFFT reja yaratishda xatolik: %v", res)
 	}
 	ctx.plan = plan
@@ -173,7 +118,7 @@ func (ctx *GPUContext) ComputeMFCC(frames [][]float32, filterBanks [][]float32, 
 		}
 
 		// FFT ni GPU’da hisoblash
-		if res := C.cufftExecR2C(ctx.plan, (*C.float)(ctx.deviceFrame), (*C.cufftComplex)(ctx.deviceFFT)); res != C.cufftSuccess {
+		if res := C.cufftExecR2C(ctx.plan, (*C.float)(ctx.deviceFrame), (*C.cufftComplex)(ctx.deviceFFT)); res != C.CUFFT_SUCCESS {
 			return nil, fmt.Errorf("FFT hisoblashda xatolik: %v", res)
 		}
 
@@ -242,7 +187,7 @@ func (ctx *GPUContext) Cleanup() error {
 	if ctx.plan != 0 {
 		C.cufftDestroy(ctx.plan) // cuFFT rejasini yo‘q qilish
 	}
-	if ctx.stream != 0 {
+	if unsafe.Pointer(ctx.stream) != nil {
 		C.cudaStreamDestroy(ctx.stream) // CUDA oqimini yo‘q qilish
 	}
 	if ctx.deviceFrame != nil {

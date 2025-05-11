@@ -27,6 +27,8 @@ type Config struct {
 	UseGPU          bool       `json:"use_gpu"`          // GPU ishlatishni yoqish/o‘chirish
 	Parallel        bool       `json:"parallel"`         // Parallel hisoblashni yoqish/o‘chirish
 	MaxConcurrency  int        `json:"max_concurrency"`  // Maksimal parallel ishlaydigan goroutinlar soni
+	LowFreq         float32    `json:"low_freq"`         // Mel filtrlar uchun past chastota chegarasi (Hz)
+	HighFreq        float32    `json:"high_freq"`        // Mel filtrlar uchun yuqori chastota chegarasi (Hz)
 }
 
 // Validate - Konfiguratsiyani tekshirish funksiyasi

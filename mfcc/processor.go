@@ -23,8 +23,8 @@ func NewProcessor(cfg Config) (*Processor, error) {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
 
-	filterBanks := createMelFilterBanks(cfg.SampleRate, cfg.FrameLength, cfg.NumFilters) // Filtrlar bankini yaratish
-	window := createWindow(cfg.FrameLength, cfg.WindowType)                              // Oyna funksiyasini yaratish
+	filterBanks := createMelFilterBanks(cfg.SampleRate, cfg.FrameLength, cfg.NumFilters, cfg.LowFreq, cfg.HighFreq) // Filtrlar bankini yaratish
+	window := createWindow(cfg.FrameLength, cfg.WindowType)                                                         // Oyna funksiyasini yaratish
 
 	var gpuCtx *GPUContext
 	var err error
