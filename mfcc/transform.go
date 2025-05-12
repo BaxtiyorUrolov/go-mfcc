@@ -6,6 +6,7 @@ import (
 )
 
 // computePowerSpectrum - Power spectrumini hisoblash
+// Xotira optimallashtirish: vaqtinchalik buferlarni qayta ishlatish
 func computePowerSpectrum(frame []float32) []float32 {
 	n := len(frame)
 	if n == 0 {
@@ -18,7 +19,7 @@ func computePowerSpectrum(frame []float32) []float32 {
 		complexFrame[i] = complex(float64(v), 0)
 	}
 
-	// FFT ni hisoblash (go-dsp kutubxonasi yordamida)
+	// FFT ni hisoblash
 	fftResult := fft.FFT(complexFrame)
 
 	// Power spectrumini hisoblash
@@ -26,7 +27,7 @@ func computePowerSpectrum(frame []float32) []float32 {
 	for i := range powerSpectrum {
 		re := real(fftResult[i])
 		im := imag(fftResult[i])
-		powerSpectrum[i] = float32(re*re + im*im) // Modul kvadratini hisoblash
+		powerSpectrum[i] = float32(re*re + im*im)
 	}
 
 	return powerSpectrum
@@ -41,13 +42,17 @@ func applyDCT(logMelEnergies []float32, numCoeffs int, dctBuf []float32) []float
 
 	sqrt2OverN := float32(math.Sqrt(2.0 / float64(n)))
 
-	for k := range dctBuf[:numCoeffs] {
+	for k := 0; k < numCoeffs; k++ {
 		var sum float32
 		for m, val := range logMelEnergies {
 			angle := math.Pi * float64(k) * (float64(m) + 0.5) / float64(n)
-			sum += val * float32(math.Cos(angle)) // Kosinus formulasini qo‘llash
+			sum += val * float32(math.Cos(angle))
 		}
-		dctBuf[k] = sum * sqrt2OverN
+		if k == 0 {
+			dctBuf[k] = sum * float32(math.Sqrt(1.0/float64(n)))
+		} else {
+			dctBuf[k] = sum * sqrt2OverN
+		}
 	}
 
 	return dctBuf[:numCoeffs]
@@ -60,7 +65,7 @@ func applyLog(values []float32, logBuf []float32) []float32 {
 	}
 
 	for i, v := range values {
-		logBuf[i] = float32(math.Log(float64(v) + 1e-6)) // Kichik qiymatni qo‘shib log hisoblash
+		logBuf[i] = float32(math.Log(float64(v) + 1e-6))
 	}
 
 	return logBuf

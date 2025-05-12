@@ -3,11 +3,11 @@ package main
 import (
 	"encoding/binary"
 	"fmt"
-	"go-mfcc/mfcc"
+	"github.com/BaxtiyorUrolov/go-mfcc/mfcc"
 	"os"
 )
 
-// readWAV - WAV faylni o‘qish (oddiy versiya)
+// readWAV - WAV faylni o‘qish
 func readWAV(filename string) ([]float32, int, error) {
 	file, err := os.Open(filename)
 	if err != nil {
@@ -15,19 +15,15 @@ func readWAV(filename string) ([]float32, int, error) {
 	}
 	defer file.Close()
 
-	// WAV headerdan ma’lumotlarni o‘qish
 	var header [44]byte
-	_, err = file.Read(header[:])
-	if err != nil {
+	if _, err := file.Read(header[:]); err != nil {
 		return nil, 0, err
 	}
 
-	// Sample rate (24-27 baytlar)
 	sampleRate := int(binary.LittleEndian.Uint32(header[24:28]))
 
-	// Ma’lumotlar blokini o‘qish
 	file.Seek(44, 0)
-	data := make([]int16, 0)
+	data := make([]int16, 0, 1024) // Boshlang‘ich hajmni optimallashtirish
 	for {
 		var sample int16
 		err = binary.Read(file, binary.LittleEndian, &sample)
@@ -37,31 +33,20 @@ func readWAV(filename string) ([]float32, int, error) {
 		data = append(data, sample)
 	}
 
-	// int16 ni float32 ga aylantirish
 	audio := make([]float32, len(data))
 	for i, sample := range data {
-		audio[i] = float32(sample) / 32768.0 // Normalizatsiya
+		audio[i] = float32(sample) / 32768.0
 	}
 
 	return audio, sampleRate, nil
 }
 
 func main() {
-	// Sozlamalarni aniqlash
-	cfg := mfcc.Config{
-		SampleRate:      16000,
-		FrameLength:     512,
-		HopLength:       160,
-		NumFilters:      26,
-		NumCoefficients: 13,
-		WindowType:      "hamming",
-		UseGPU:          true,
-		MaxConcurrency:  4,
-		PreEmphasis:     0.97,
-		Parallel:        false,
-	}
+	cfg := mfcc.DefaultConfig()
+	cfg.UseGPU = true
+	cfg.MaxConcurrency = 4
+	cfg.Parallel = true
 
-	// WAV faylni o‘qish
 	audio, sampleRate, err := readWAV("audio.wav")
 	if err != nil {
 		fmt.Printf("WAV faylni o‘qishda xatolik: %v\n", err)
@@ -69,7 +54,6 @@ func main() {
 	}
 	cfg.SampleRate = sampleRate
 
-	// Processor ni yaratish
 	processor, err := mfcc.NewProcessor(cfg)
 	if err != nil {
 		fmt.Printf("Processor yaratishda xatolik: %v\n", err)
@@ -77,16 +61,14 @@ func main() {
 	}
 	defer processor.Close()
 
-	// MFCC ni hisoblash
 	mfccs, err := processor.Process(audio)
 	if err != nil {
 		fmt.Printf("MFCC hisoblashda xatolik: %v\n", err)
 		return
 	}
 
-	// Natijalarni chiqarish
 	fmt.Println("MFCC natijalari:")
-	for i, frame := range mfccs {
+	for i, frame := range mfccs[:5] { // Faqat 5 ta ramkani chiqarish
 		fmt.Printf("Ramka %d: %v\n", i, frame)
 	}
 }

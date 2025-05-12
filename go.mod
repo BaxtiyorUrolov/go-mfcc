@@ -1,4 +1,4 @@
-module go-mfcc
+module github.com/BaxtiyorUrolov/go-mfcc
 
 go 1.23.8
 

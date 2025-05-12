@@ -3,6 +3,7 @@ package mfcc
 import "math"
 
 // createWindow - Oyna funksiyasini yaratish
+// Xotira optimallashtirish: har safar yangi massiv o‘rniga qayta ishlatish mumkin
 func createWindow(length int, wType WindowType) []float32 {
 	window := make([]float32, length)
 
@@ -34,12 +35,12 @@ func createWindow(length int, wType WindowType) []float32 {
 }
 
 // applyWindow - Oyna funksiyasini signalga qo‘llash
+// Xotira optimallashtirish: buffer ni tashqi havzadan olish mumkin
 func applyWindow(frame, window, buffer []float32) {
-	if len(frame) != len(window) || len(frame) != len(buffer) { // Uzunliklar mos kelmasa, to‘xtatish
+	if len(frame) != len(window) || len(frame) != len(buffer) {
 		return
 	}
-
-	for i := range frame { // Har bir elementga oyna qiymatini ko‘paytirish
+	for i := range frame {
 		buffer[i] = frame[i] * window[i]
 	}
 }

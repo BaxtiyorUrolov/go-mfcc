@@ -16,6 +16,7 @@ const (
 )
 
 // Config - MFCC hisoblash konfiguratsiyasi uchun tuzilma
+// JSON teglari orqali konfiguratsiyani tashqi fayllardan yuklab olish mumkin
 type Config struct {
 	SampleRate      int        `json:"sample_rate"`      // Audio namunalar tezligi (Hz)
 	FrameLength     int        `json:"frame_length"`     // Har bir ramkaning uzunligi (namunalar soni)
@@ -26,7 +27,7 @@ type Config struct {
 	PreEmphasis     float32    `json:"pre_emphasis"`     // Pre-emphasis koeffitsienti
 	UseGPU          bool       `json:"use_gpu"`          // GPU ishlatishni yoqish/o‘chirish
 	Parallel        bool       `json:"parallel"`         // Parallel hisoblashni yoqish/o‘chirish
-	MaxConcurrency  int        `json:"max_concurrency"`  // Maksimal parallel ishlaydigan goroutinlar soni
+	MaxConcurrency  int        `json:"max_concurrency"`  // Maksimal parallel goroutinlar soni
 	LowFreq         float32    `json:"low_freq"`         // Mel filtrlar uchun past chastota chegarasi (Hz)
 	HighFreq        float32    `json:"high_freq"`        // Mel filtrlar uchun yuqori chastota chegarasi (Hz)
 }
