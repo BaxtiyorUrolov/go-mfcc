@@ -1,316 +1,251 @@
 # go-mfcc - MFCC Hisoblash Paketi
 
-`go-mfcc` - bu audio signallardan Mel-Frequency Cepstral Coefficients (MFCC) xususiyatlarini olish uchun mo‘ljallangan Go dasturlash tilidagi paket. Ushbu paket mashinaviy o‘qitish (ML) modellarida audio ma’lumotlar bilan ishlash uchun qulay vosita sifatida ishlatilishi mumkin. Paket katta hajmdagi audio fayllarni (minglab fayllar) samarali qayta ishlash uchun optimallashtirilgan.
+`go-mfcc` — bu audio signallardan **Mel-Frequency Cepstral Coefficients (MFCC)** xususiyatlarini olish uchun mo‘ljallangan Go dasturlash tilidagi kutubxona. Ushbu kutubxona mashinaviy o‘qitish (Machine Learning) modellarida audio ma’lumotlarni qayta ishlash uchun juda qulay vosita bo‘lib, katta hajmdagi audio fayllarni (minglab fayllar) samarali qayta ishlash uchun optimallashtirilgan. Kutubxona CPU va GPU (CUDA orqali) hisoblashni, parallel ishlov berishni va real vaqtda oqimni qo‘llab-quvvatlaydi.
 
 ## Xususiyatlari
-- **CPU va GPU qo‘llab-quvvatlash**: MFCC hisoblashni CPU yoki GPU (CUDA) da amalga oshirish imkoniyati.
-- **Parallel hisoblash**: Ko‘p yadroli protsessorlarda tez ishlash uchun parallel goroutinlar.
-- **Real vaqtda oqim**: Audio ma’lumotlarini real vaqtda qayta ishlash imkoniyati.
-- **Xotira optimallashtirish**: Xotira havzasi (memory pool) orqali xotira ajratishni minimallashtirish.
-- **Katta hajmdagi ma’lumotlar bilan ishlash**: Minglab audio fayllarni parallel qayta ishlash imkoniyati (`ProcessBatch` funksiyasi orqali).
-- **Moslashuvchan konfiguratsiya**: Sample rate, frame uzunligi, filtrlar soni va boshqa parametrlarni sozlash imkoniyati.
 
-## Loyiha tuzilishi
-Loyiha quyidagi fayllardan iborat:
-```
-go-mfcc/
-├── go.mod              # Go moduli fayli
-├── kernels.o           # Kompilyatsiya qilingan kernel ob'ekti
-└── mfcc/               # MFCC paketi
-    ├── config.go       # Konfiguratsiya tuzilmasi va validatsiya
-    ├── core.go         # Asosiy protsessor tuzilmasi
-    ├── gpu.go          # GPU hisoblashlari
-    ├── kernels.cu      # CUDA kernel fayli (GPU hisoblashlari uchun)
-    ├── mel.go          # Mel filtrlar bankini yaratish
-    ├── memory.go       # Xotira havzasi
-    ├── processor.go    # MFCC hisoblash logikasi
-    ├── stream.go       # Real vaqtda oqim logikasi
-    ├── transform.go    # Transformatsiyalar (FFT, DCT, log)
-    └── window.go       # Oyna funksiyalari
-```
+- **MFCC Hisoblash**: Moslashuvchan parametrlar bilan MFCC xususiyatlarini olish.
+- **Oyna Funksiyalari**: Hamming, Hanning, Blackman va boshqa oyna turlarini qo‘llab-quvvatlash.
+- **Pre-Emphasis**: Audio signalning yuqori chastotalarini kuchaytirish filtri.
+- **Qo‘shimcha Xususiyatlar**: Zero-Crossing Rate (ZCR), Pitch, Spectral Centroid, Spectral Roll-off va Energy.
+- **GPU Tezlashtirish**: CUDA yordamida GPU’da tezkor hisoblash.
+- **Parallel Hisoblash**: Ko‘p yadroli protsessorlarda samarali ishlash.
+- **Real Vaqtda Oqim**: Audio ma’lumotlarini real vaqtda qayta ishlash.
+- **Xotira Optimallashtirish**: Xotira havzasi orqali samarali xotira boshqaruvi.
+- **CSV Eksport**: Hisoblangan xususiyatlarni CSV formatida saqlash (ML datasetlari uchun qulay).
 
-**Eslatma**: Bu paket faqat kod kutubxonasi sifatida ishlatilishi uchun mo‘ljallangan. Namuna `main.go` fayli loyiha tarkibida yo‘q, foydalanuvchilar o‘z loyihalarida kerakli funksiyalarni chaqirib ishlatishi mumkin.
+## O‘rnatish
 
-## O‘rnatish bo‘yicha ko‘rsatmalar (O‘zbek tilida)
+Ushbu kutubxonani o‘rnatish uchun quyidagi qadamlarni bajaring:
 
-### 1. Talablar
-Ushbu paketni ishlatish uchun quyidagi dasturlar o‘rnatilgan bo‘lishi kerak:
-- **Go 1.20 yoki undan yuqori versiyasi**: Go dasturlash tilini o‘rnating ([rasmiy sayt](https://golang.org/dl/)).
-- **CUDA va cuFFT (agar GPU ishlatmoqchi bo‘lsangiz)**: CUDA Toolkit 12.8 va cuFFT kutubxonasi talab qilinadi.
-- **nvcc kompilyatori**: CUDA fayllarini kompilyatsiya qilish uchun.
+1. **Go O‘rnatish**  
+   Go 1.18 yoki undan yuqori versiyasini o‘rnating. Uni [rasmiy sayt](https://golang.org/dl/)dan yuklab olishingiz mumkin.
 
-### 2. Paketni o‘rnatish
-1. O‘z loyihangizda `go-mfcc` paketini import qilish uchun quyidagi buyruqni bajaring:
+2. **Kutubxonani Yuklab Olish**  
+   Terminalda quyidagi buyruqni ishga tushuring:
    ```bash
    go get github.com/BaxtiyorUrolov/go-mfcc
    ```
-   Bu buyruq `go-mfcc` paketini loyihangizga qo‘shadi va qaramliklarni (`github.com/mjibson/go-dsp`) avtomatik yuklaydi.
 
-2. Agar loyiha tuzilishini ko‘rish yoki o‘zgartirish kerak bo‘lsa, loyihani klon qiling:
-   ```bash
-   git clone https://github.com/BaxtiyorUrolov/go-mfcc.git
-   cd go-mfcc
-   ```
+3. **GPU Qo‘llab-Quvvatlash (Ixtiyoriy)**  
+   Agar GPU’da hisoblashni xohlasangiz:
+   - **CUDA Toolkit** o‘rnating (masalan, 12.8 versiyasi). Yuklab olish: [CUDA Downloads](https://developer.nvidia.com/cuda-downloads).
+   - Muhit o‘zgaruvchilarini sozlang:
+     ```bash
+     export PATH=/usr/local/cuda-12.8/bin:$PATH
+     export LD_LIBRARY_PATH=/usr/local/cuda-12.8/lib64:$LD_LIBRARY_PATH
+     ```
+   - CUDA kernelni kompilyatsiya qiling:
+     ```bash
+     nvcc -c internal/kernels.cu -o kernels.o
+     ```
+   - Eslatma: GPU ishlatish uchun C kompilyatori (masalan, gcc) o‘rnatilgan bo‘lishi kerak.
 
-### 3. CUDA va cuFFT o‘rnatish (GPU uchun)
-Agar GPU hisoblashlaridan foydalanmoqchi bo‘lsangiz, quyidagi qadamlarni bajaring:
-1. **CUDA Toolkit o‘rnatish**:
-    - NVIDIA rasmiy saytidan CUDA Toolkit 12.8 ni yuklab oling: [CUDA Downloads](https://developer.nvidia.com/cuda-downloads).
-    - O‘rnatish bo‘yicha ko‘rsatmalarga rioya qiling:
-      ```bash
-      sudo apt-get install cuda-12-8
-      ```
-    - O‘rnatilganligini tekshirish uchun:
-      ```bash
-      nvcc --version
-      ```
-2. **Muhit o‘zgaruvchilarini sozlash**:
-    - CUDA kutubxonalari yo‘lini tizim o‘zgaruvchilariga qo‘shing:
-      ```bash
-      export PATH=/usr/local/cuda-12.8/bin:$PATH
-      export LD_LIBRARY_PATH=/usr/local/cuda-12.8/lib64:$LD_LIBRARY_PATH
-      ```
-    - Bu o‘zgarishlarni doimiy qilish uchun `~/.bashrc` fayliga qo‘shing:
-      ```bash
-      echo 'export PATH=/usr/local/cuda-12.8/bin:$PATH' >> ~/.bashrc
-      echo 'export LD_LIBRARY_PATH=/usr/local/cuda-12.8/lib64:$LD_LIBRARY_PATH' >> ~/.bashrc
-      source ~/.bashrc
-      ```
-3. **cuFFT kutubxonasini tekshirish**:
-    - cuFFT odatda CUDA bilan birga o‘rnatiladi. Uning mavjudligini `/usr/local/cuda-12.8/lib64` ichida `libcufft.so` fayli orqali tekshiring.
+4. **Oddiy CPU Ishlatish**  
+   Agar GPU kerak bo‘lmasa, `Config`da `UseGPU: false` sozlamasini qo‘llang va yuqoridagi CUDA qadamlarini o‘tkazib yuboring.
 
-### 4. CUDA kernel faylini kompilyatsiya qilish
-Agar GPU hisoblashlaridan foydalanmoqchi bo‘lsangiz, `mfcc/kernels.cu` faylini kompilyatsiya qilishingiz kerak:
-1. `go-mfcc` loyihasiga o‘ting:
-   ```bash
-   cd $GOPATH/pkg/mod/github.com/!baxtiyor!urolov/go-mfcc@vX.X.X
-   ```
-   (Bu yerda `vX.X.X` - o‘rnatilgan versiya, masalan, `v0.0.1`.)
-2. `kernels.cu` faylini kompilyatsiya qiling:
-   ```bash
-   nvcc -c mfcc/kernels.cu -o kernels.o
-   ```
-3. Kompilyatsiya muvaffaqiyatli bo‘lsa, `kernels.o` fayli loyiha ildizida paydo bo‘ladi.
+## Foydalanish Misollari
 
-**Eslatma**: Agar GPU ishlatishni rejalashtirmasangiz, bu qadamni o‘tkazib yuborishingiz mumkin. Bunday holda `Config.UseGPU = false` sozlamasini ishlatish kifoya.
+### 1. Bitta Audio Faylni Qayta Ishlash
 
-## Foydalanish (O‘zbek tilida)
+Bitta audio fayldan MFCC xususiyatlarini olish:
 
-### 1. Paketni import qilish
-O‘z loyihangizda `go-mfcc` paketini quyidagicha import qiling:
-```go
-import "github.com/BaxtiyorUrolov/go-mfcc/mfcc"
-```
-
-### 2. Asosiy foydalanish - Bitta audio fayl uchun
-Bitta audio fayldan MFCC xususiyatlarini olish uchun `Process` metodidan foydalaning.
-
-#### Namuna kod:
 ```go
 package main
 
 import (
-    "encoding/binary"
-    "fmt"
-    "github.com/BaxtiyorUrolov/go-mfcc/mfcc"
-    "os"
+	"fmt"
+	"github.com/BaxtiyorUrolov/go-mfcc/mfcc"
 )
 
-// readWAV - WAV faylni o‘qish
-func readWAV(filename string) ([]float32, int, error) {
-    file, err := os.Open(filename)
-    if err != nil {
-        return nil, 0, err
-    }
-    defer file.Close()
-    var header [44]byte
-    if _, err := file.Read(header[:]); err != nil {
-        return nil, 0, err
-    }
-    sampleRate := int(binary.LittleEndian.Uint32(header[24:28]))
-    file.Seek(44, 0)
-    data := make([]int16, 0, 1024)
-    for {
-        var sample int16
-        err = binary.Read(file, binary.LittleEndian, &sample)
-        if err != nil {
-            break
-        }
-        data = append(data, sample)
-    }
-    audio := make([]float32, len(data))
-    for i, sample := range data {
-        audio[i] = float32(sample) / 32768.0
-    }
-    return audio, sampleRate, nil
-}
-
 func main() {
-    // Audio faylni o‘qish
-    audio, sampleRate, err := readWAV("path/to/audio.wav")
-    if err != nil {
-        fmt.Printf("WAV faylni o‘qishda xatolik: %v\n", err)
-        return
-    }
+	// Standart sozlamalarni olish
+	cfg := mfcc.DefaultConfig()
+	
+	// Protsessor yaratish
+	processor, err := mfcc.NewProcessor(cfg)
+	if err != nil {
+		fmt.Println("Protsessor yaratishda xatolik:", err)
+		return
+	}
+	defer processor.Close()
 
-    // Konfiguratsiyani sozlash
-    cfg := mfcc.DefaultConfig()
-    cfg.SampleRate = sampleRate
-    cfg.UseGPU = true
-    cfg.MaxConcurrency = 4
-    cfg.Parallel = true
+	// Audio faylni yuklash (masalan, WAV formatida)
+	audio, err := loadAudio("path/to/audio.wav")
+	if err != nil {
+		fmt.Println("Audio yuklashda xatolik:", err)
+		return
+	}
 
-    // Protsessor yaratish
-    processor, err := mfcc.NewProcessor(cfg)
-    if err != nil {
-        fmt.Printf("Processor yaratishda xatolik: %v\n", err)
-        return
-    }
-    defer processor.Close()
+	// MFCC hisoblash
+	mfccs, err := processor.Process(audio)
+	if err != nil {
+		fmt.Println("Audio qayta ishlashda xatolik:", err)
+		return
+	}
 
-    // MFCC hisoblash
-    mfccs, err := processor.Process(audio)
-    if err != nil {
-        fmt.Printf("MFCC hisoblashda xatolik: %v\n", err)
-        return
-    }
-
-    // Natijalarni chiqarish
-    fmt.Println("MFCC natijalari (birinchi 5 ramka):")
-    for i, frame := range mfccs[:5] {
-        fmt.Printf("Ramka %d: %v\n", i, frame)
-    }
+	// Natijalarni chiqarish
+	fmt.Println(mfccs)
 }
 ```
 
-### 3. Katta hajmdagi audio fayllarni qayta ishlash
-Agar minglab audio fayllarni qayta ishlash kerak bo‘lsa, `ProcessBatch` metodidan foydalaning. Bu metod bir nechta audio signallarni parallel ravishda qayta ishlaydi.
+### 2. Bir Necha Audio Fayllarni Parallel Qayta Ishlash
 
-#### Namuna kod:
+Katta datasetlarni qayta ishlash uchun:
+
 ```go
 package main
 
 import (
-    "encoding/binary"
-    "fmt"
-    "github.com/BaxtiyorUrolov/go-mfcc/mfcc"
-    "os"
+	"fmt"
+	"github.com/BaxtiyorUrolov/go-mfcc/mfcc"
 )
 
-// readWAV - WAV faylni o‘qish
-func readWAV(filename string) ([]float32, int, error) {
-    file, err := os.Open(filename)
-    if err != nil {
-        return nil, 0, err
-    }
-    defer file.Close()
-    var header [44]byte
-    if _, err := file.Read(header[:]); err != nil {
-        return nil, 0, err
-    }
-    sampleRate := int(binary.LittleEndian.Uint32(header[24:28]))
-    file.Seek(44, 0)
-    data := make([]int16, 0, 1024)
-    for {
-        var sample int16
-        err = binary.Read(file, binary.LittleEndian, &sample)
-        if err != nil {
-            break
-        }
-        data = append(data, sample)
-    }
-    audio := make([]float32, len(data))
-    for i, sample := range data {
-        audio[i] = float32(sample) / 32768.0
-    }
-    return audio, sampleRate, nil
+func main() {
+	cfg := mfcc.DefaultConfig()
+	cfg.Parallel = true // Parallel ishlashni yoqish
+	processor, _ := mfcc.NewProcessor(cfg)
+	defer processor.Close()
+
+	// Bir nechta audio signallar
+	audios := [][]float32{ /* audio ma’lumotlari */ }
+	results, err := processor.ProcessBatch(audios)
+	if err != nil {
+		fmt.Println("Batch qayta ishlashda xatolik:", err)
+		return
+	}
+
+	// Natijalarni ishlatish
+	fmt.Println(results)
 }
+```
+
+### 3. Real Vaqtda Oqim
+
+Audio oqimini real vaqtda qayta ishlash:
+
+```go
+package main
+
+import (
+	"fmt"
+	"github.com/BaxtiyorUrolov/go-mfcc/mfcc"
+)
 
 func main() {
-    // Bir nechta audio faylni o‘qish
-    audioFiles := []string{
-        "path/to/audio1.wav",
-        "path/to/audio2.wav",
-        "path/to/audio3.wav",
-        // ... minglab fayllar
-    }
-    audios := make([][]float32, len(audioFiles))
-    var sampleRate int
-    for i, file := range audioFiles {
-        audio, sr, err := readWAV(file)
-        if err != nil {
-            fmt.Printf("Fayl %s ni o‘qishda xatolik: %v\n", file, err)
-            continue
-        }
-        audios[i] = audio
-        sampleRate = sr // Barcha fayllar bir xil sample rate ga ega bo‘lishi kerak
-    }
+	cfg := mfcc.DefaultConfig()
+	processor, _ := mfcc.NewProcessor(cfg)
+	defer processor.Close()
 
-    // Konfiguratsiyani sozlash
-    cfg := mfcc.DefaultConfig()
-    cfg.SampleRate = sampleRate
-    cfg.UseGPU = true
-    cfg.MaxConcurrency = 8 // Protsessor yadrolari soniga qarab sozlashingiz mumkin
-    cfg.Parallel = true
+	// Oqim protsessorini yaratish
+	streamer := processor.NewStreamer()
+	defer streamer.Close()
 
-    // Protsessor yaratish
-    processor, err := mfcc.NewProcessor(cfg)
-    if err != nil {
-        fmt.Printf("Processor yaratishda xatolik: %v\n", err)
-        return
-    }
-    defer processor.Close()
+	// Audio qismini yozish
+	audioChunk := []float32{ /* audio qismi */ }
+	streamer.Write(audioChunk)
 
-    // Batch orqali MFCC hisoblash
-    batchMFCCs, err := processor.ProcessBatch(audios)
-    if err != nil {
-        fmt.Printf("Batch MFCC hisoblashda xatolik: %v\n", err)
-        return
-    }
-
-    // Natijalarni chiqarish (har bir fayl uchun birinchi 5 ramka)
-    for i, mfccs := range batchMFCCs {
-        if mfccs == nil {
-            continue
-        }
-        fmt.Printf("Fayl %s uchun MFCC natijalari (birinchi 5 ramka):\n", audioFiles[i])
-        for j, frame := range mfccs[:5] {
-            fmt.Printf("Ramka %d: %v\n", j, frame)
-        }
-    }
+	// MFCC natijasini olish
+	mfcc := streamer.Read()
+	fmt.Println(mfcc)
 }
 ```
 
-### 4. Streaming rejimida foydalanish
-Agar audio ma’lumotlarini real vaqtda qayta ishlash kerak bo‘lsa, `Streamer` dan foydalaning:
+### 4. Xususiyatlarni CSV ga Eksport Qilish
+
+Hisoblangan xususiyatlarni CSV faylga saqlash:
+
 ```go
-streamer := processor.NewStreamer()
-defer streamer.Close()
-streamer.Write(audioChunk) // Audio qismini yozish
-mfcc := streamer.Read()    // MFCC natijasini olish
+package main
+
+import (
+	"fmt"
+	"github.com/BaxtiyorUrolov/go-mfcc/mfcc"
+	"github.com/BaxtiyorUrolov/go-mfcc/internal"
+)
+
+func main() {
+	cfg := mfcc.DefaultConfig()
+	processor, _ := mfcc.NewProcessor(cfg)
+	defer processor.Close()
+
+	audio, _ := loadAudio("path/to/audio.wav")
+	features, _ := processor.proc.Process(audio) // Ichki xususiyatlarni olish
+
+	// Yorliqlar bilan CSV ga eksport qilish
+	labels := []string{"sinf1"}
+	err := mfcc.ExportToCSV([][]internal.FrameFeatures{features}, labels, "xususiyatlar.csv")
+	if err != nil {
+		fmt.Println("CSV ga eksport qilishda xatolik:", err)
+	}
+}
 ```
 
-### 5. Konfiguratsiyani sozlash
-`Config` tuzilmasi orqali hisoblash parametrlarni o‘zgartirish mumkin:
-- `SampleRate`: Audio sample rate (masalan, 16000 Hz).
-- `FrameLength`: Har bir ramkaning uzunligi (standart: 512).
-- `HopLength`: Ramkalar orasidagi qadam uzunligi (standart: 256).
-- `NumCoefficients`: MFCC koeffitsientlari soni (standart: 13).
-- `NumFilters`: Mel filtrlar soni (standart: 26).
-- `UseGPU`: GPU hisoblashni yoqish/o‘chirish.
-- `Parallel`: Parallel hisoblashni yoqish/o‘chirish.
-- `MaxConcurrency`: Parallel hisoblash uchun ishchi goroutinlar soni.
+## Sozlamalar (Configuration Options)
 
-## Xatolarni bartaraf qilish
-- **"nvcc topilmadi" xatosi**: CUDA to‘g‘ri o‘rnatilganligini va `nvcc` yo‘lining tizim o‘zgaruvchilarida ekanligini tekshiring.
-- **"libcufft.so topilmadi" xatosi**: `LD_LIBRARY_PATH` o‘zgaruvchisida `/usr/local/cuda-12.8/lib64` yo‘li qo‘shilganligini tekshiring.
-- **Xotira yetishmovchiligi**: Agar minglab fayllarni qayta ishlayotgan bo‘lsangiz, `MaxConcurrency` ni protsessor yadrolari soniga mos ravishda kamaytiring.
+`Config` tuzilmasi orqali quyidagi parametrlarni moslashtirish mumkin:
+
+- **`SampleRate`**: Audio sampling tezligi (Hz, masalan, 44100).
+- **`FrameLength`**: Har bir ramkaning uzunligi (namunalar soni).
+- **`HopLength`**: Ramkalar orasidagi qadam uzunligi (overlapni nazorat qiladi).
+- **`NumCoefficients`**: Qaytariladigan MFCC koeffitsientlari soni.
+- **`NumFilters`**: Mel filtrlar soni.
+- **`WindowType`**: Oyna funksiyasi turi ("hamming", "hanning", "blackman", "rect").
+- **`PreEmphasis`**: Pre-emphasis koeffitsienti (0.0 dan 1.0 gacha).
+- **`UseGPU`**: GPU hisoblashni yoqish/o‘chirish (true/false).
+- **`Parallel`**: Parallel hisoblashni yoqish/o‘chirish (true/false).
+- **`MaxConcurrency`**: Parallel hisoblash uchun maksimal goroutinlar soni.
+- **`LowFreq`**: Mel filtrlar uchun past chastota chegarasi (Hz).
+- **`HighFreq`**: Mel filtrlar uchun yuqori chastota chegarasi (Hz).
+
+Standart sozlamalarni olish uchun `mfcc.DefaultConfig()` funksiyasidan foydalaning.
+
+## Loyiha Tuzilishi
+
+```
+go-mfcc/
+├── go.mod              # Go modul fayli
+├── go.sum              # Go dependency fayli
+├── internal/           # Ichki modullar
+│   ├── config.go       # Sozlamalar logikasi
+│   ├── core.go         # Asosiy hisoblash funksiyalari
+│   ├── gpu.go          # GPU qo‘llab-quvvatlash
+│   ├── kernels.cu      # CUDA kernel kodi
+│   ├── mel.go          # Mel filtr logikasi
+│   ├── memory.go       # Xotira boshqaruvi
+│   ├── processor.go    # Audio qayta ishlash
+│   ├── stream.go       # Oqim logikasi
+│   ├── transform.go    # Transformatsiya funksiyalari
+│   └── window.go       # Oyna funksiyalari
+├── kernels.o           # Kompilyatsiya qilingan CUDA kernel
+├── mfcc/               # Asosiy paket
+│   ├── export.go       # Eksport funksiyalari (masalan, CSV)
+│   ├── mfcc.go         # MFCC hisoblash logikasi
+│   └── processor_test.go # Test fayllari
+└── README.md           # Ushbu hujjat
+```
+
+## Hissadorlik
+
+Agar ushbu loyihaga hissa qo‘shmoqchi bo‘lsangiz:
+1. Repozitoriyani fork qiling.
+2. Yangi branch yarating (`git checkout -b feature/yangi-xususiyat`).
+3. O‘zgartirishlaringizni kiriting va commit qiling.
+4. Pull request jo‘nating.
+
+Kodingiz testlardan o‘tganligiga va loyiha kodlash standartlariga mos kelishiga ishonch hosil qiling.
 
 ## Litsenziya
-Ushbu paket MIT litsenziyasi ostida tarqatiladi. Batafsil ma’lumot uchun `LICENSE` faylini ko‘ring.
+
+[Loyiha litsenziyasini bu yerga qo‘shing, masalan, MIT yoki boshqa. Agar aniq litsenziya ko‘rsatilmagan bo‘lsa, muallifdan so‘rang.]
 
 ## Aloqa
+
 Agar savollar yoki takliflar bo‘lsa, loyiha muallifi bilan quyidagi usullar orqali bog‘laning:
 - **Telegram kanali**: [https://t.me/UrolovBaxtiyor](https://t.me/UrolovBaxtiyor)
 - **LinkedIn**: [https://www.linkedin.com/in/BaxtiyorUrolov](https://www.linkedin.com/in/BaxtiyorUrolov)
 - **GitHub**: [BaxtiyorUrolov](https://github.com/BaxtiyorUrolov)
+
+---
+
+Ushbu README loyihangiz haqida to‘liq ma’lumot beradi va foydalanuvchilarga kutubxonani o‘rnatish, sozlash va undan foydalanishni oson tushunishga yordam beradi.
