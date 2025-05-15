@@ -35,14 +35,3 @@ func createWindow(length int, wType WindowType) []float32 {
 
 	return window
 }
-
-// applyWindow - Oyna funksiyasini signalga qo‘llash
-// Xotira optimallashtirish: buffer ni tashqi havzadan olish mumkin
-func applyWindow(frame, window, buffer []float32) {
-	if len(frame) != len(window) || len(frame) != len(buffer) {
-		return
-	}
-	for i := range frame {
-		buffer[i] = frame[i] * window[i]
-	}
-}

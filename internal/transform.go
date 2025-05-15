@@ -6,7 +6,7 @@ import (
 )
 
 // computePowerSpectrum - Power spectrumini hisoblash
-// Xotira optimallashtirish: vaqtinchalik buferlarni qayta ishlatish
+// Bu funksiya audio ramkaning chastota spektri quvvatini hisoblaydi, model o‘qitish uchun asosiy xususiyat
 func computePowerSpectrum(frame []float32) []float32 {
 	n := len(frame)
 	if n == 0 {
@@ -33,7 +33,52 @@ func computePowerSpectrum(frame []float32) []float32 {
 	return powerSpectrum
 }
 
-// applyDCT - Diskret kosinus transformatsiyasini qo‘llash
+// applyWindow - Oyna funksiyasini signalga qo‘llash
+// Bu funksiya audio ramkasiga oynani (masalan, Hamming yoki Blackman) qo‘llaydi
+func applyWindow(frame, window, buffer []float32) {
+	if len(frame) != len(window) || len(frame) != len(buffer) {
+		return
+	}
+	for i := range frame {
+		buffer[i] = frame[i] * window[i]
+	}
+}
+
+// applyMelFilters - Mel filtrlarini qo‘llash
+// Bu funksiya power spectrumga Mel filtrlarini qo‘llab, energiya qiymatlarini hisoblaydi
+func applyMelFilters(powerSpectrum []float32, filterBanks [][]float32, melBuf []float32) []float32 {
+	for i := range melBuf {
+		melBuf[i] = 0
+	}
+
+	for i, filter := range filterBanks {
+		var energy float32
+		for j, val := range filter {
+			if j < len(powerSpectrum) {
+				energy += val * powerSpectrum[j]
+			}
+		}
+		melBuf[i] = energy
+	}
+	return melBuf
+}
+
+// applyLog - Logarifmik shkalaga o‘tkazish
+// Bu funksiya Mel energiyalarini logarifmik shkalaga aylantiradi, MFCC uchun muhim qadam
+func applyLog(values []float32, logBuf []float32) []float32 {
+	if len(values) == 0 {
+		return nil
+	}
+
+	for i, v := range values {
+		logBuf[i] = float32(math.Log(float64(v) + 1e-6)) // Kichik epsilon qo‘shish, log 0 ga qarshi himoya
+	}
+
+	return logBuf
+}
+
+// applyDCT - Diskret Kosinus Transformatsiyasini qo‘llash
+// Bu funksiya log Mel energiyalarini MFCC koeffitsientlariga aylantiradi
 func applyDCT(logMelEnergies []float32, numCoeffs int, dctBuf []float32) []float32 {
 	n := len(logMelEnergies)
 	if n == 0 || numCoeffs <= 0 {
@@ -58,20 +103,66 @@ func applyDCT(logMelEnergies []float32, numCoeffs int, dctBuf []float32) []float
 	return dctBuf[:numCoeffs]
 }
 
-// applyLog - Logarifmik shkalaga o‘tkazish
-func applyLog(values []float32, logBuf []float32) []float32 {
-	if len(values) == 0 {
-		return nil
+// computeSpectralCentroid - Spectral Centroid ni hisoblash
+// Bu funksiya spektrning og‘irlik markazini hisoblaydi, model o‘qitish uchun xususiyat
+func computeSpectralCentroid(powerSpectrum []float32, sampleRate float32) float32 {
+	if len(powerSpectrum) == 0 {
+		return 0
 	}
 
-	for i, v := range values {
-		logBuf[i] = float32(math.Log(float64(v) + 1e-6))
+	var sumFreq, sumPower float32
+	for i := 0; i < len(powerSpectrum); i++ {
+		freq := float32(i) * sampleRate / float32(2*(len(powerSpectrum)-1))
+		sumFreq += freq * powerSpectrum[i]
+		sumPower += powerSpectrum[i]
 	}
 
-	return logBuf
+	if sumPower == 0 {
+		return 0
+	}
+	return sumFreq / sumPower
 }
 
-// computeZCR calculates the Zero-Crossing Rate.
+// computeSpectralRollOff - Spectral Roll-off ni hisoblash
+// Bu funksiya spektr energiyasining 85% ni o‘z ichiga olgan chastotani topadi
+func computeSpectralRollOff(powerSpectrum []float32, sampleRate float32, rollOffPercent float32) float32 {
+	if len(powerSpectrum) == 0 {
+		return 0
+	}
+
+	// Umumiy energiyani hisoblash
+	var totalEnergy float32
+	for _, val := range powerSpectrum {
+		totalEnergy += val
+	}
+
+	// Roll-off chegarasini hisoblash
+	threshold := totalEnergy * rollOffPercent
+	var cumulativeEnergy float32
+	rollOffFreq := float32(0)
+	for i := 0; i < len(powerSpectrum); i++ {
+		cumulativeEnergy += powerSpectrum[i]
+		if cumulativeEnergy >= threshold {
+			rollOffFreq = float32(i) * sampleRate / float32(2*(len(powerSpectrum)-1))
+			break
+		}
+	}
+
+	return rollOffFreq
+}
+
+// computeEnergy - Ramka energiyasini hisoblash
+// Bu funksiya ramkaning umumiy energiyasini hisoblaydi, model uchun foydali xususiyat
+func computeEnergy(frame []float32) float32 {
+	var energy float32
+	for _, val := range frame {
+		energy += val * val
+	}
+	return float32(math.Sqrt(float64(energy / float32(len(frame)))))
+}
+
+// computeZCR - Zero-Crossing Rate ni hisoblash
+// Bu funksiya ramkaning nol kesishish darajasini hisoblaydi
 func computeZCR(frame []float32) float32 {
 	var zcr float32
 	for i := 1; i < len(frame); i++ {
@@ -80,4 +171,48 @@ func computeZCR(frame []float32) float32 {
 		}
 	}
 	return zcr / float32(len(frame)-1)
+}
+
+// computePitch - Pitch (fundamental chastota) ni hisoblash
+// Bu funksiya autokorrelyatsiya usuli bilan pitch ni hisoblaydi
+func computePitch(frame []float32, sampleRate float32) float32 {
+	n := len(frame)
+	if n < 2 {
+		return 0
+	}
+
+	// Autokorrelyatsiyani hisoblash
+	autocorr := make([]float32, n)
+	for lag := 0; lag < n; lag++ {
+		var sum float32
+		for i := 0; i < n-lag; i++ {
+			sum += frame[i] * frame[i+lag]
+		}
+		autocorr[lag] = sum
+	}
+
+	// Maksimal lag ni topish
+	minPeriod := int(sampleRate / 400) // 400 Hz - maksimal pitch
+	maxPeriod := int(sampleRate / 50)  // 50 Hz - minimal pitch
+	if maxPeriod >= n {
+		maxPeriod = n - 1
+	}
+	if minPeriod < 1 {
+		minPeriod = 1
+	}
+
+	maxCorr := float32(0)
+	lagAtMax := 0
+	for lag := minPeriod; lag <= maxPeriod; lag++ {
+		if autocorr[lag] > maxCorr {
+			maxCorr = autocorr[lag]
+			lagAtMax = lag
+		}
+	}
+
+	if lagAtMax == 0 {
+		return 0
+	}
+
+	return sampleRate / float32(lagAtMax)
 }

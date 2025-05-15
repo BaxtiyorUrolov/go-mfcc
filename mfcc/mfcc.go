@@ -20,10 +20,9 @@ const (
 )
 
 // Config - MFCC hisoblash konfiguratsiyasi uchun tuzilma
-// JSON teglari orqali konfiguratsiyani tashqi fayllardan yuklab olish mumkin
 type Config struct {
 	SampleRate      int        `json:"sample_rate"`      // Audio namunalar tezligi (Hz)
-	FrameLength     int        `json:"frame_length"`     // Har bir ramkaning uzunligi (namunalar soni)
+	FrameLength     int        `json:"frame_length"`     // Har bir ramkaning uzunligi
 	HopLength       int        `json:"hop_length"`       // Ramkalar orasidagi qadam uzunligi
 	NumCoefficients int        `json:"num_coefficients"` // MFCC koeffitsientlari soni
 	NumFilters      int        `json:"num_filters"`      // Mel filtrlar banki soni
@@ -121,7 +120,20 @@ func (p *Processor) Process(audio []float32) ([][]float32, error) {
 	if len(audio) == 0 {
 		return nil, errors.New("bo‘sh audio kirishi")
 	}
-	return p.proc.Process(audio)
+
+	// internal.Processor.Process dan FrameFeatures olish
+	features, err := p.proc.Process(audio)
+	if err != nil {
+		return nil, fmt.Errorf("xususiyatlarni hisoblashda xatolik: %w", err)
+	}
+
+	// Faqat MFCC ni qaytarish uchun FrameFeatures dan MFCC ni ajratib olamiz
+	mfccs := make([][]float32, len(features))
+	for i, frame := range features {
+		mfccs[i] = frame.MFCC
+	}
+
+	return mfccs, nil
 }
 
 // normalizeMFCC normalizes MFCC coefficients (zero-mean, unit-variance).
@@ -158,7 +170,7 @@ func normalizeMFCC(mfccs [][][]float32) [][][]float32 {
 	return normalized
 }
 
-// Update ProcessBatch to include normalization
+// ProcessBatch bir nechta audio signallarni parallel ravishda qayta ishlaydi.
 func (p *Processor) ProcessBatch(audios [][]float32) ([][][]float32, error) {
 	if len(audios) == 0 {
 		return nil, errors.New("bo‘sh audio partiyasi")
@@ -190,7 +202,7 @@ func (p *Processor) ProcessBatch(audios [][]float32) ([][][]float32, error) {
 	}
 
 	wg.Wait()
-	return normalizeMFCC(results), nil // Add normalization here
+	return normalizeMFCC(results), nil
 }
 
 // Close protsessor resurslarini ozod qiladi.
@@ -215,6 +227,7 @@ func (s *Streamer) Write(data []float32) {
 
 // Read streamdan MFCC xususiyatlarini oladi.
 func (s *Streamer) Read() []float32 {
+	// internal.Streamer.Read allaqachon []float32 qaytaradi, to‘g‘ridan-to‘g‘ri qaytaramiz
 	return s.s.Read()
 }
 

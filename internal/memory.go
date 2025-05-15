@@ -2,7 +2,8 @@ package internal
 
 import "sync"
 
-// MemoryPool - Xotira havzasi
+// MemoryPool - Xotira havzasi, buferlarni qayta ishlatish uchun ishlatiladi
+// Bu xotira optimallashtirish uchun yordam beradi
 type MemoryPool struct {
 	frameBuffers [][]float32
 	melBuffers   [][]float32
@@ -14,94 +15,119 @@ type MemoryPool struct {
 // NewMemoryPool - Yangi xotira havzasini yaratish
 func NewMemoryPool(maxConcurrency, frameLength, numFilters, numCoefficients int) *MemoryPool {
 	pool := &MemoryPool{
-		frameBuffers: make([][]float32, 0, maxConcurrency),
-		melBuffers:   make([][]float32, 0, maxConcurrency),
-		logBuffers:   make([][]float32, 0, maxConcurrency),
-		dctBuffers:   make([][]float32, 0, maxConcurrency),
+		frameBuffers: make([][]float32, maxConcurrency),
+		melBuffers:   make([][]float32, maxConcurrency),
+		logBuffers:   make([][]float32, maxConcurrency),
+		dctBuffers:   make([][]float32, maxConcurrency),
 	}
 
 	for i := 0; i < maxConcurrency; i++ {
-		pool.frameBuffers = append(pool.frameBuffers, make([]float32, frameLength))
-		pool.melBuffers = append(pool.melBuffers, make([]float32, numFilters))
-		pool.logBuffers = append(pool.logBuffers, make([]float32, numFilters))
-		pool.dctBuffers = append(pool.dctBuffers, make([]float32, numCoefficients))
+		pool.frameBuffers[i] = make([]float32, frameLength)
+		pool.melBuffers[i] = make([]float32, numFilters)
+		pool.logBuffers[i] = make([]float32, numFilters)
+		pool.dctBuffers[i] = make([]float32, numCoefficients)
 	}
 
 	return pool
 }
 
-// GetFrameBuffer - Ramka buferini olish
+// GetFrameBuffer - Frame buferini olish
 func (p *MemoryPool) GetFrameBuffer() []float32 {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if len(p.frameBuffers) == 0 {
-		return make([]float32, cap(p.frameBuffers[0]))
+	for i, buf := range p.frameBuffers {
+		if len(buf) > 0 {
+			p.frameBuffers[i] = nil
+			return buf
+		}
 	}
-	buf := p.frameBuffers[len(p.frameBuffers)-1]
-	p.frameBuffers = p.frameBuffers[:len(p.frameBuffers)-1]
-	return buf
+	// Agar barcha buferlar ishlatilgan bo‘lsa, yangi yaratish
+	return make([]float32, 0)
 }
 
-// PutFrameBuffer - Ramka buferini qaytarish
+// PutFrameBuffer - Frame buferini qaytarish
 func (p *MemoryPool) PutFrameBuffer(buf []float32) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.frameBuffers = append(p.frameBuffers, buf)
+	for i := range p.frameBuffers {
+		if p.frameBuffers[i] == nil {
+			p.frameBuffers[i] = buf
+			return
+		}
+	}
 }
 
 // GetMelBuffer - Mel buferini olish
 func (p *MemoryPool) GetMelBuffer() []float32 {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if len(p.melBuffers) == 0 {
-		return make([]float32, cap(p.melBuffers[0]))
+	for i, buf := range p.melBuffers {
+		if len(buf) > 0 {
+			p.melBuffers[i] = nil
+			return buf
+		}
 	}
-	buf := p.melBuffers[len(p.melBuffers)-1]
-	p.melBuffers = p.melBuffers[:len(p.melBuffers)-1]
-	return buf
+	return make([]float32, 0)
 }
 
 // PutMelBuffer - Mel buferini qaytarish
 func (p *MemoryPool) PutMelBuffer(buf []float32) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.melBuffers = append(p.melBuffers, buf)
+	for i := range p.melBuffers {
+		if p.melBuffers[i] == nil {
+			p.melBuffers[i] = buf
+			return
+		}
+	}
 }
 
 // GetLogBuffer - Log buferini olish
 func (p *MemoryPool) GetLogBuffer() []float32 {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if len(p.logBuffers) == 0 {
-		return make([]float32, cap(p.logBuffers[0]))
+	for i, buf := range p.logBuffers {
+		if len(buf) > 0 {
+			p.logBuffers[i] = nil
+			return buf
+		}
 	}
-	buf := p.logBuffers[len(p.logBuffers)-1]
-	p.logBuffers = p.logBuffers[:len(p.logBuffers)-1]
-	return buf
+	return make([]float32, 0)
 }
 
 // PutLogBuffer - Log buferini qaytarish
 func (p *MemoryPool) PutLogBuffer(buf []float32) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.logBuffers = append(p.logBuffers, buf)
+	for i := range p.logBuffers {
+		if p.logBuffers[i] == nil {
+			p.logBuffers[i] = buf
+			return
+		}
+	}
 }
 
 // GetDCTBuffer - DCT buferini olish
 func (p *MemoryPool) GetDCTBuffer() []float32 {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if len(p.dctBuffers) == 0 {
-		return make([]float32, cap(p.dctBuffers[0]))
+	for i, buf := range p.dctBuffers {
+		if len(buf) > 0 {
+			p.dctBuffers[i] = nil
+			return buf
+		}
 	}
-	buf := p.dctBuffers[len(p.dctBuffers)-1]
-	p.dctBuffers = p.dctBuffers[:len(p.dctBuffers)-1]
-	return buf
+	return make([]float32, 0)
 }
 
 // PutDCTBuffer - DCT buferini qaytarish
 func (p *MemoryPool) PutDCTBuffer(buf []float32) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.dctBuffers = append(p.dctBuffers, buf)
+	for i := range p.dctBuffers {
+		if p.dctBuffers[i] == nil {
+			p.dctBuffers[i] = buf
+			return
+		}
+	}
 }

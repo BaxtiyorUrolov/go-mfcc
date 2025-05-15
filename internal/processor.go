@@ -3,12 +3,22 @@ package internal
 import (
 	"errors"
 	"fmt"
-	"math"
 	"runtime"
 	"sync"
 )
 
-// Processor - MFCC hisoblash uchun asosiy tuzilma
+// FrameFeatures - Har bir ramka uchun chiqariladigan xususiyatlarni saqlash uchun tuzilma
+// Bu tuzilma model o‘qitish uchun barcha xususiyatlarni jamlaydi
+type FrameFeatures struct {
+	MFCC             []float32 // MFCC koeffitsientlari
+	ZCR              float32   // Zero-Crossing Rate
+	Pitch            float32   // Fundamental chastota
+	SpectralCentroid float32   // Spectral Centroid
+	SpectralRollOff  float32   // Spectral Roll-off
+	Energy           float32   // Ramka energiyasi
+}
+
+// Processor - Audio xususiyatlarini hisoblash uchun asosiy tuzilma
 type Processor struct {
 	config      Config
 	filterBanks [][]float32
@@ -21,10 +31,12 @@ type Processor struct {
 // NewProcessor - Yangi protsessor yaratish
 func NewProcessor(cfg Config) (*Processor, error) {
 	if err := cfg.Validate(); err != nil {
-		return nil, fmt.Errorf("invalid config: %w", err)
+		return nil, fmt.Errorf("konfiguratsiyada xatolik: %w", err)
 	}
 
+	// Mel filtrlarini yaratish
 	filterBanks := createMelFilterBanks(cfg.SampleRate, cfg.FrameLength, cfg.NumFilters, cfg.LowFreq, cfg.HighFreq)
+	// Oyna funksiyasini yaratish
 	window := createWindow(cfg.FrameLength, cfg.WindowType)
 
 	var gpuCtx *GPUContext
@@ -50,53 +62,65 @@ func (p *Processor) Config() Config {
 	return p.config
 }
 
-// Process - Audio signalni qayta ishlaydi va delta/delta-delta ni hisoblaydi
-func (p *Processor) Process(audio []float32) ([][]float32, error) {
+// Process - Audio signalni qayta ishlaydi va barcha xususiyatlarni hisoblaydi
+func (p *Processor) Process(audio []float32) ([]FrameFeatures, error) {
 	if len(audio) == 0 {
 		return nil, errors.New("audio kirishi bo‘sh")
 	}
 
+	// Pre-emphasis qo‘llash
 	emphasized := p.applyPreEmphasis(audio)
+	// Signalni ramkalarga bo‘lish
 	frames := p.frameSignal(emphasized)
 
-	var mfccs [][]float32
+	var features []FrameFeatures
 	var err error
 
 	switch {
 	case p.config.UseGPU && p.gpuCtx != nil:
-		mfccs, err = p.gpuCtx.ComputeMFCC(frames, p.filterBanks, p.window, p.config)
+		// GPU’da faqat MFCC hisoblanadi, qolgan xususiyatlar CPU’da
+		mfccs, err := p.gpuCtx.ComputeMFCC(frames, p.filterBanks, p.window, p.config)
+		if err != nil {
+			return nil, fmt.Errorf("GPU’da MFCC hisoblashda xatolik: %w", err)
+		}
+		features = make([]FrameFeatures, len(frames))
+		for i, frame := range frames {
+			powerSpectrum := computePowerSpectrum(frame)
+			features[i] = FrameFeatures{
+				MFCC:             mfccs[i],
+				ZCR:              computeZCR(frame),
+				Pitch:            computePitch(frame, float32(p.config.SampleRate)),
+				SpectralCentroid: computeSpectralCentroid(powerSpectrum, float32(p.config.SampleRate)),
+				SpectralRollOff:  computeSpectralRollOff(powerSpectrum, float32(p.config.SampleRate), 0.85),
+				Energy:           computeEnergy(frame),
+			}
+		}
 	case p.config.Parallel:
-		mfccs = p.processParallel(frames)
+		features = p.processParallel(frames)
 	default:
-		mfccs = p.processSequential(frames)
+		features = p.processSequential(frames)
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("MFCC hisoblashda xatolik: %w", err)
+		return nil, fmt.Errorf("xususiyatlarni hisoblashda xatolik: %w", err)
 	}
 
-	// Delta va delta-delta ni butun ramka ketma-ketligi uchun hisoblash
-	width := 2 // Delta uchun oynaning kengligi
-	deltas := computeDelta(mfccs, width)
-	deltaDeltas := computeDeltaDelta(deltas, width)
-
-	// Delta-delta natijalarini qaytarish (masalan, faqat delta-delta)
-	return deltaDeltas, nil
+	return features, nil
 }
 
-// processSequential - Sequential tarzda hisoblash
-func (p *Processor) processSequential(frames [][]float32) [][]float32 {
-	mfccs := make([][]float32, len(frames))
+// processSequential - Sequential tarzda xususiyatlarni hisoblash
+func (p *Processor) processSequential(frames [][]float32) []FrameFeatures {
+	features := make([]FrameFeatures, len(frames))
 	for i, frame := range frames {
-		mfccs[i] = p.computeFrameMFCC(frame)
+		features[i] = p.computeFrameFeatures(frame)
 	}
-	return mfccs
+	return features
 }
 
-// processParallel - Parallel tarzda hisoblash
-func (p *Processor) processParallel(frames [][]float32) [][]float32 {
+// processParallel - Parallel tarzda xususiyatlarni hisoblash
+func (p *Processor) processParallel(frames [][]float32) []FrameFeatures {
 	numFrames := len(frames)
-	mfccs := make([][]float32, numFrames)
+	features := make([]FrameFeatures, numFrames)
 
 	numWorkers := runtime.NumCPU()
 	if numWorkers > p.config.MaxConcurrency {
@@ -113,18 +137,18 @@ func (p *Processor) processParallel(frames [][]float32) [][]float32 {
 		go func(start, end int) {
 			defer wg.Done()
 			for j := start; j < end && j < numFrames; j++ {
-				mfccs[j] = p.computeFrameMFCC(frames[j])
+				features[j] = p.computeFrameFeatures(frames[j])
 			}
 		}(start, end)
 	}
 
 	wg.Wait()
-	return mfccs
+	return features
 }
 
-// computeFrameMFCC - Bitta ramka uchun MFCC ni hisoblash
-func (p *Processor) computeFrameMFCC(frame []float32) []float32 {
-	// Agar ramka uzunligi mos kelmasa, to‘ldirish
+// computeFrameFeatures - Bitta ramka uchun barcha xususiyatlarni hisoblash
+func (p *Processor) computeFrameFeatures(frame []float32) FrameFeatures {
+	// Ramka uzunligini tekshirish va to‘ldirish
 	if len(frame) != p.config.FrameLength {
 		frame = padFrame(frame, p.config.FrameLength)
 	}
@@ -147,10 +171,18 @@ func (p *Processor) computeFrameMFCC(frame []float32) []float32 {
 	melEnergies := applyMelFilters(powerSpectrum, p.filterBanks, melBuf)
 	// Logarifmik shkalaga o‘tkazish
 	logMelEnergies := applyLog(melEnergies, logBuf)
-	// DCT ni qo‘llash
+	// DCT ni qo‘llash va MFCC chiqarish
 	mfcc := applyDCT(logMelEnergies, p.config.NumCoefficients, dctBuf)
 
-	return mfcc
+	// Barcha qo‘shimcha xususiyatlarni hisoblash
+	return FrameFeatures{
+		MFCC:             mfcc,
+		ZCR:              computeZCR(frame),
+		Pitch:            computePitch(frame, float32(p.config.SampleRate)),
+		SpectralCentroid: computeSpectralCentroid(powerSpectrum, float32(p.config.SampleRate)),
+		SpectralRollOff:  computeSpectralRollOff(powerSpectrum, float32(p.config.SampleRate), 0.85),
+		Energy:           computeEnergy(frame),
+	}
 }
 
 // Close - Resurslarni ozod qilish
@@ -191,7 +223,7 @@ func (p *Processor) frameSignal(signal []float32) [][]float32 {
 	return frames
 }
 
-// padFrame - Ramkani to‘ldirish
+// padFrame - Ramkani kerakli uzunlikka to‘ldirish
 func padFrame(frame []float32, length int) []float32 {
 	if len(frame) >= length {
 		return frame[:length]
@@ -199,61 +231,8 @@ func padFrame(frame []float32, length int) []float32 {
 
 	padded := make([]float32, length)
 	copy(padded, frame)
+	for i := len(frame); i < length; i++ {
+		padded[i] = 0 // Nollar bilan to‘ldirish
+	}
 	return padded
-}
-
-// applyMelFilters - Mel filtrlarini qo‘llash
-func applyMelFilters(powerSpectrum []float32, filterBanks [][]float32, melBuf []float32) []float32 {
-	for i := range melBuf {
-		melBuf[i] = 0
-	}
-
-	for i, filter := range filterBanks {
-		var energy float32
-		for j, val := range filter {
-			if j < len(powerSpectrum) {
-				energy += val * powerSpectrum[j]
-			}
-		}
-		melBuf[i] = energy
-	}
-	return melBuf
-}
-
-// computeDelta - Delta koeffitsientlarini hisoblash
-func computeDelta(mfccs [][]float32, width int) [][]float32 {
-	// Agar ramka soni yetarli bo‘lmasa, asl MFCC’larni qaytarish
-	if len(mfccs) < 2*width+1 {
-		return mfccs
-	}
-
-	deltas := make([][]float32, len(mfccs))
-	for i := range mfccs {
-		deltas[i] = make([]float32, len(mfccs[i]))
-	}
-
-	for t := 0; t < len(mfccs); t++ {
-		for j := 0; j < len(mfccs[t]); j++ {
-			var sum float32
-			var count float32
-			for w := -width; w <= width; w++ {
-				tau := t + w
-				if tau >= 0 && tau < len(mfccs) {
-					sum += float32(w) * mfccs[tau][j]
-					count += float32(math.Abs(float64(w)))
-				}
-			}
-			if count > 0 {
-				deltas[t][j] = 2 * sum / (count * float32(width*width))
-			}
-		}
-	}
-	return deltas
-}
-
-// computeDeltaDelta - Delta-delta koeffitsientlarini hisoblash
-func computeDeltaDelta(mfccs [][]float32, width int) [][]float32 {
-	// Avval delta’larni hisoblaymiz, keyin ular uchun delta-delta ni hisoblaymiz
-	deltas := computeDelta(mfccs, width)
-	return computeDelta(deltas, width)
 }
