@@ -1,6 +1,8 @@
-package mfcc
+package internal
 
-import "fmt"
+import (
+	"fmt"
+)
 
 // MFCCProcessor - Asosiy tuzilma, protsessor va xotira boshqaruvi
 type MFCCProcessor struct {

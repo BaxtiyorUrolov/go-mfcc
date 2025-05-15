@@ -1,6 +1,8 @@
-package mfcc
+package internal
 
-import "math"
+import (
+	"math"
+)
 
 // createWindow - Oyna funksiyasini yaratish
 // Xotira optimallashtirish: har safar yangi massiv o‘rniga qayta ishlatish mumkin

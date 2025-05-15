@@ -1,4 +1,4 @@
-package mfcc
+package internal
 
 import (
 	"errors" // Xatolarni boshqarish uchun standart kutubxona

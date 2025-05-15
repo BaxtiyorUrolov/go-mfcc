@@ -1,4 +1,4 @@
-package mfcc
+package internal
 
 import (
 	"github.com/mjibson/go-dsp/fft"
@@ -69,4 +69,15 @@ func applyLog(values []float32, logBuf []float32) []float32 {
 	}
 
 	return logBuf
+}
+
+// computeZCR calculates the Zero-Crossing Rate.
+func computeZCR(frame []float32) float32 {
+	var zcr float32
+	for i := 1; i < len(frame); i++ {
+		if (frame[i-1] < 0 && frame[i] >= 0) || (frame[i-1] >= 0 && frame[i] < 0) {
+			zcr++
+		}
+	}
+	return zcr / float32(len(frame)-1)
 }

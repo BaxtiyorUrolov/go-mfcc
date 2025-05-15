@@ -1,4 +1,4 @@
-package mfcc
+package internal
 
 import (
 	"sync"

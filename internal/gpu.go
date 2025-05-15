@@ -1,4 +1,4 @@
-package mfcc
+package internal
 
 /*
 #cgo CFLAGS: -I/usr/local/cuda-12.8/targets/x86_64-linux/include -Wall
