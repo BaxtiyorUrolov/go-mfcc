@@ -8,6 +8,7 @@
 - **Oyna Funksiyalari**: Hamming, Hanning, Blackman va boshqa oyna turlarini qo‘llab-quvvatlash.
 - **Pre-Emphasis**: Audio signalning yuqori chastotalarini kuchaytirish filtri.
 - **Qo‘shimcha Xususiyatlar**: Zero-Crossing Rate (ZCR), Pitch, Spectral Centroid, Spectral Roll-off va Energy.
+- **Audio Faylni O‘qish**: `DylanMeeus/GoAudio` yordamida WAV formatdagi audio fayllarni oson o‘qish.
 - **GPU Tezlashtirish**: CUDA yordamida GPU’da tezkor hisoblash.
 - **Parallel Hisoblash**: Ko‘p yadroli protsessorlarda samarali ishlash.
 - **Real Vaqtda Oqim**: Audio ma’lumotlarini real vaqtda qayta ishlash.
@@ -22,9 +23,10 @@ Ushbu kutubxonani o‘rnatish uchun quyidagi qadamlarni bajaring:
    Go 1.18 yoki undan yuqori versiyasini o‘rnating. Uni [rasmiy sayt](https://golang.org/dl/)dan yuklab olishingiz mumkin.
 
 2. **Kutubxonani Yuklab Olish**  
-   Terminalda quyidagi buyruqni ishga tushuring:
+   Terminalda quyidagi buyruqlarni ishga tushuring:
    ```bash
    go get github.com/BaxtiyorUrolov/go-mfcc
+   go get github.com/DylanMeeus/GoAudio/wave
    ```
 
 3. **GPU Qo‘llab-Quvvatlash (Ixtiyoriy)**  
@@ -48,7 +50,7 @@ Ushbu kutubxonani o‘rnatish uchun quyidagi qadamlarni bajaring:
 
 ### 1. Bitta Audio Faylni Qayta Ishlash
 
-Bitta audio fayldan MFCC xususiyatlarini olish:
+`DylanMeeus/GoAudio` yordamida WAV faylni o‘qib, MFCC xususiyatlarini hisoblash:
 
 ```go
 package main
@@ -61,7 +63,7 @@ import (
 func main() {
 	// Standart sozlamalarni olish
 	cfg := mfcc.DefaultConfig()
-	
+
 	// Protsessor yaratish
 	processor, err := mfcc.NewProcessor(cfg)
 	if err != nil {
@@ -70,22 +72,28 @@ func main() {
 	}
 	defer processor.Close()
 
-	// Audio faylni yuklash (masalan, WAV formatida)
-	audio, err := loadAudio("path/to/audio.wav")
+	// Audio faylni o‘qish
+	audio, sampleRate, err := mfcc.LoadAudio("path/to/audio.wav")
 	if err != nil {
-		fmt.Println("Audio yuklashda xatolik:", err)
+		fmt.Println("Audio faylni o‘qishda xatolik:", err)
 		return
 	}
+
+	// SampleRate ni konfiguratsiyaga moslashtirish
+	cfg.SampleRate = sampleRate
 
 	// MFCC hisoblash
 	mfccs, err := processor.Process(audio)
 	if err != nil {
-		fmt.Println("Audio qayta ishlashda xatolik:", err)
+		fmt.Println("MFCC hisoblashda xatolik:", err)
 		return
 	}
 
-	// Natijalarni chiqarish
-	fmt.Println(mfccs)
+	// Natijalarni chiqarish (birinchi 5 ramka)
+	fmt.Println("MFCC natijalari (birinchi 5 ramka):")
+	for i, frame := range mfccs[:5] {
+		fmt.Printf("Ramka %d: %v\n", i, frame)
+	}
 }
 ```
 
@@ -104,19 +112,39 @@ import (
 func main() {
 	cfg := mfcc.DefaultConfig()
 	cfg.Parallel = true // Parallel ishlashni yoqish
-	processor, _ := mfcc.NewProcessor(cfg)
+	processor, err := mfcc.NewProcessor(cfg)
+	if err != nil {
+		fmt.Println("Protsessor yaratishda xatolik:", err)
+		return
+	}
 	defer processor.Close()
 
-	// Bir nechta audio signallar
-	audios := [][]float32{ /* audio ma’lumotlari */ }
+	// Bir nechta audio fayllarni o‘qish
+	audioFiles := []string{"audio1.wav", "audio2.wav", "audio3.wav"}
+	audios := make([][]float32, len(audioFiles))
+	for i, file := range audioFiles {
+		audio, _, err := mfcc.LoadAudio(file)
+		if err != nil {
+			fmt.Printf("%s faylni o‘qishda xatolik: %v\n", file, err)
+			continue
+		}
+		audios[i] = audio
+	}
+
+	// Batch orqali MFCC hisoblash
 	results, err := processor.ProcessBatch(audios)
 	if err != nil {
 		fmt.Println("Batch qayta ishlashda xatolik:", err)
 		return
 	}
 
-	// Natijalarni ishlatish
-	fmt.Println(results)
+	// Natijalarni chiqarish
+	for i, mfccs := range results {
+		fmt.Printf("%s fayl uchun MFCC natijalari (birinchi 5 ramka):\n", audioFiles[i])
+		for j, frame := range mfccs[:5] {
+			fmt.Printf("Ramka %d: %v\n", j, frame)
+		}
+	}
 }
 ```
 
@@ -134,20 +162,43 @@ import (
 
 func main() {
 	cfg := mfcc.DefaultConfig()
-	processor, _ := mfcc.NewProcessor(cfg)
+	processor, err := mfcc.NewProcessor(cfg)
+	if err != nil {
+		fmt.Println("Protsessor yaratishda xatolik:", err)
+		return
+	}
 	defer processor.Close()
 
 	// Oqim protsessorini yaratish
 	streamer := processor.NewStreamer()
 	defer streamer.Close()
 
-	// Audio qismini yozish
-	audioChunk := []float32{ /* audio qismi */ }
-	streamer.Write(audioChunk)
+	// Audio qismini o‘qish va yozish
+	audio, _, err := mfcc.LoadAudio("path/to/audio.wav")
+	if err != nil {
+		fmt.Println("Audio faylni o‘qishda xatolik:", err)
+		return
+	}
+	go func() {
+		chunkSize := 256
+		for i := 0; i < len(audio); i += chunkSize {
+			end := i + chunkSize
+			if end > len(audio) {
+				end = len(audio)
+			}
+			chunk := audio[i:end]
+			streamer.Write(chunk)
+		}
+	}()
 
-	// MFCC natijasini olish
-	mfcc := streamer.Read()
-	fmt.Println(mfcc)
+	// MFCC natijalarini olish
+	for {
+		mfcc := streamer.Read()
+		if mfcc == nil {
+			break
+		}
+		fmt.Println("Real vaqtda MFCC:", mfcc)
+	}
 }
 ```
 
@@ -166,15 +217,30 @@ import (
 
 func main() {
 	cfg := mfcc.DefaultConfig()
-	processor, _ := mfcc.NewProcessor(cfg)
+	processor, err := mfcc.NewProcessor(cfg)
+	if err != nil {
+		fmt.Println("Protsessor yaratishda xatolik:", err)
+		return
+	}
 	defer processor.Close()
 
-	audio, _ := loadAudio("path/to/audio.wav")
-	features, _ := processor.proc.Process(audio) // Ichki xususiyatlarni olish
+	// Audio faylni o‘qish
+	audio, _, err := mfcc.LoadAudio("path/to/audio.wav")
+	if err != nil {
+		fmt.Println("Audio faylni o‘qishda xatolik:", err)
+		return
+	}
+
+	// Xususiyatlarni hisoblash
+	features, err := processor.proc.Process(audio)
+	if err != nil {
+		fmt.Println("Xususiyatlarni hisoblashda xatolik:", err)
+		return
+	}
 
 	// Yorliqlar bilan CSV ga eksport qilish
 	labels := []string{"sinf1"}
-	err := mfcc.ExportToCSV([][]internal.FrameFeatures{features}, labels, "xususiyatlar.csv")
+	err = mfcc.ExportToCSV([][]internal.FrameFeatures{features}, labels, "xususiyatlar.csv")
 	if err != nil {
 		fmt.Println("CSV ga eksport qilishda xatolik:", err)
 	}
@@ -219,6 +285,7 @@ go-mfcc/
 │   └── window.go       # Oyna funksiyalari
 ├── kernels.o           # Kompilyatsiya qilingan CUDA kernel
 ├── mfcc/               # Asosiy paket
+│   ├── audio.go        # Audio fayllarni o‘qish funksiyalari (DylanMeeus/GoAudio)
 │   ├── export.go       # Eksport funksiyalari (masalan, CSV)
 │   ├── mfcc.go         # MFCC hisoblash logikasi
 │   └── processor_test.go # Test fayllari
@@ -235,17 +302,9 @@ Agar ushbu loyihaga hissa qo‘shmoqchi bo‘lsangiz:
 
 Kodingiz testlardan o‘tganligiga va loyiha kodlash standartlariga mos kelishiga ishonch hosil qiling.
 
-## Litsenziya
-
-[Loyiha litsenziyasini bu yerga qo‘shing, masalan, MIT yoki boshqa. Agar aniq litsenziya ko‘rsatilmagan bo‘lsa, muallifdan so‘rang.]
-
 ## Aloqa
 
 Agar savollar yoki takliflar bo‘lsa, loyiha muallifi bilan quyidagi usullar orqali bog‘laning:
 - **Telegram kanali**: [https://t.me/UrolovBaxtiyor](https://t.me/UrolovBaxtiyor)
 - **LinkedIn**: [https://www.linkedin.com/in/BaxtiyorUrolov](https://www.linkedin.com/in/BaxtiyorUrolov)
 - **GitHub**: [BaxtiyorUrolov](https://github.com/BaxtiyorUrolov)
-
----
-
-Ushbu README loyihangiz haqida to‘liq ma’lumot beradi va foydalanuvchilarga kutubxonani o‘rnatish, sozlash va undan foydalanishni oson tushunishga yordam beradi.
