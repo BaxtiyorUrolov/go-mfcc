@@ -236,3 +236,11 @@ func padFrame(frame []float32, length int) []float32 {
 	}
 	return padded
 }
+
+// computeFrameMFCC - Bitta ramka uchun faqat MFCC koeffitsientlarini hisoblash
+func (p *Processor) computeFrameMFCC(frame []float32) []float32 {
+	// computeFrameFeatures ni chaqirib, to‘liq xususiyatlarni hisoblaymiz
+	features := p.computeFrameFeatures(frame)
+	// Faqat MFCC koeffitsientlarini qaytaramiz
+	return features.MFCC
+}
